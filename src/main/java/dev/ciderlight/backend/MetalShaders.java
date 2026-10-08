@@ -98,6 +98,8 @@ public final class MetalShaders {
     private static final boolean WAVING = ShaderToggle.WAVING.enabled();
     /** Water mirrors the scene around it (screen-space reflections); off: the sky only (-Dciderlight.waterReflections). */
     private static final boolean WATER_REFLECTIONS = ShaderToggle.WATER_REFLECTIONS.enabled();
+    /** Waves move across the water (water_surface.metal); off: the water is calm (-Dciderlight.waterWaves). */
+    private static final boolean WATER_WAVES = ShaderToggle.WATER_WAVES.enabled();
 
     static final int KIND_NONE = 0;
     static final int KIND_SOLID = 1;
@@ -922,6 +924,9 @@ public final class MetalShaders {
             b.append("#define ALPHA_CUTOUT 0.1\n#define MC_REFLECT 1\n");
             if (!WATER_REFLECTIONS) {
                 b.append("#define MC_NO_WATER_TRACE 1\n");
+            }
+            if (!WATER_WAVES) {
+                b.append("#define MC_NO_WATER_WAVES 1\n");
             }
         }
         if (DEBUG) {

@@ -50,7 +50,7 @@ In the game, go to Options > Video Settings and click "Ciderlight..." under the 
 - Low: smaller shadow maps, coarser fog, and the world drawn at a lower resolution.
   Much lighter on the graphics chip, with most of the look.
 - Off: Minecraft's normal look, still drawn with Metal.
-Below it you can turn Shadows, Waving Plants, Water Reflections and Ambient Occlusion off one by
+Below it you can turn Shadows, Waving Plants, Water Reflections, Water Waves and Ambient Occlusion off one by
 one (Shadows off saves the most), and set the Render Scale (the world's resolution).
 Shadows and Ambient Occlusion change straight away; the other settings apply after you quit and
 restart the game.

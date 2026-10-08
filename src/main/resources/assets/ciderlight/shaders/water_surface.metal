@@ -32,6 +32,9 @@ constant int WATER_OCTAVES = 6;
 // four pixels (footprint = world size of one pixel), leaving distant water calm instead of aliased.
 static WaterWaves water_waves(float2 world, float time, float footprint, float rain) {
     WaterWaves w = {float2(0.0), 0.0};
+#ifdef MC_NO_WATER_WAVES
+    return w; // Water Waves off: a calm surface (water_face_waves still adds rain ripples)
+#endif
     const float2x2 turn = float2x2(float2(-0.737, 0.676), float2(-0.676, -0.737));
     float2x2 basis = float2x2(float2(1.0, 0.0), float2(0.0, 1.0));
     float frequency = 0.16;     // cycles per block: ~6 block swells down to ~0.25 block chop

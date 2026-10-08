@@ -5,8 +5,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * The on/off effects on the Ciderlight settings page (CiderlightSettingsScreen), all on by default. Each is saved to
  * config/ciderlight.properties under its key. Shadows and Ambient Occlusion are live: MetalShaders checks them every
- * frame. Waving Plants and Water Reflections are compiled into the pipelines, so like the Shaders choice they take
- * effect at the next start. -Dciderlight.KEY=true|false still overrides the saved value.
+ * frame. Waving Plants, Water Reflections and Water Waves are compiled into the pipelines, so like the Shaders choice
+ * they take effect at the next start. -Dciderlight.KEY=true|false still overrides the saved value.
  */
 public enum ShaderToggle {
     SHADOWS("shadows", "Shadows", true,
@@ -15,6 +15,8 @@ public enum ShaderToggle {
     WAVING("waving", "Waving Plants", false, "Leaves, grass, flowers and crops sway in the wind."),
     WATER_REFLECTIONS("waterReflections", "Water Reflections", false,
         "Water mirrors the hills, trees and buildings around it. Off: water reflects the sky only, which costs less."),
+    WATER_WAVES("waterWaves", "Water Waves", false,
+        "Waves roll across lakes and the sea and run down waterfalls. Off: the water lies calm (rain still ripples it)."),
     AMBIENT_OCCLUSION("ao", "Ambient Occlusion", true, "Soft shade in corners, under ledges and between blocks.");
 
     /** The property key, both in ciderlight.properties and as -Dciderlight.KEY. */

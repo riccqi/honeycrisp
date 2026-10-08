@@ -48,7 +48,7 @@ Open **Options > Video Settings > Ciderlight...** (under the graphics preset):
 - **Shaders**: Off (Metal renderer, vanilla look), Low or High. A-series GPUs and the plain M1, M2, M3 and M4 default to
   Low (smaller shadow maps, fewer samples, lighter water reflections, world drawn at about two thirds resolution);
   everything else defaults to High.
-- **Shadows**, **Waving Plants**, **Water Reflections**, **Ambient Occlusion**: each on by default. Shadows off also
+- **Shadows**, **Waving Plants**, **Water Reflections**, **Water Waves**, **Ambient Occlusion**: each on by default. Shadows off also
   skips the shadow maps and light shafts, which is the biggest saving.
 - **Render Scale**: the world's resolution, Auto (the quality's own) or 50 to 100%.
 
@@ -56,7 +56,7 @@ Shadows and Ambient Occlusion apply at once; everything else applies after a res
 `config/ciderlight.properties`.
 
 JVM `-D` overrides: `ciderlight.quality=low|high`, `ciderlight.shaders=false`, `ciderlight.renderScale=<0.25–1>`,
-`ciderlight.shadowSize`, `ciderlight.shadowDistance`, `ciderlight.fogDistance`, `ciderlight.waterReflections=false`,
+`ciderlight.shadowSize`, `ciderlight.shadowDistance`, `ciderlight.fogDistance`, `ciderlight.waterReflections=false`, `ciderlight.waterWaves=false`,
 `ciderlight.waving=false`, `ciderlight.ao=false`, `ciderlight.shadows=false`, `ciderlight.framePacing=true`, `ciderlight.debug=true`,
 `ciderlight.disable=true` (fall back to vanilla backends). An override wins over the settings page, which greys that
 option out.
