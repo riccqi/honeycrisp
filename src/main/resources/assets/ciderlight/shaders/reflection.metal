@@ -138,12 +138,6 @@ static ReflectionHit trace_reflection(depth2d<float> depth, float4x4 vp, float3 
             fallback.hidden = reflection_hidden(previous, clipOrigin + clipStep * previousT, clipOrigin, clipStep);
             return fallback;
         }
-        float4 stepClip = clipOrigin + clipStep * t;
-        // Behind something nearer the camera than the water (the leaves of a tree the camera stands under): what the
-        // ray would find past it through gaps in the leaves differs from column to column, so it reflects the sky.
-        if (sample.z > 1.0 && previous.z < 0.0 && clipStep.w > 0.0 && stepClip.w - sample.z < clipOrigin.w) {
-            return fallback;
-        }
         if (sample.z >= 0.0 && previous.z < 0.0) {
             float low = previousT, high = t;
             float4 refined = sample;
@@ -171,13 +165,18 @@ static ReflectionHit trace_reflection(depth2d<float> depth, float4x4 vp, float3 
                 if (clipStep.w > 0.0) confidence *= reflection_clearance(depth, coefficients, refined.xy, clipOrigin.w);
                 return ReflectionHit{refined.xy, confidence, high};
             }
+            bool foreground = clipStep.w > 0.0 && hitClip.w - refined.z < clipOrigin.w;
+            // Behind something nearer the camera than the water (the leaves of a tree the camera stands under): what the
+            // ray would find past it through gaps in the leaves differs from column to column, so it reflects the sky.
+            // This is decided only after the refinement: a step that overshoots a surface the ray really meets (the
+            // ceiling of an overhang, seen nearer the camera than the water under it) is a hit, not an occluder.
+            if (foreground && sample.z > 1.0) return fallback;
             // The ray passed behind something (a leaf canopy, a trunk seen from its far side). Keep marching to what
             // lies beyond it: giving up here shows the sky colour through every tree as bright speckle. If nothing
             // else is found, an occluder only a few blocks in front of the ray is a better guess than the sky; one far
             // in front (a pillar between the camera and the water) is still rejected, and so is anything nearer the
             // camera than the water itself: a ray heading away from the camera cannot reach it, so a tree standing
             // between the camera and the water never shows in it.
-            bool foreground = clipStep.w > 0.0 && hitClip.w - refined.z < clipOrigin.w;
             if (fallback.confidence == 0.0 && !foreground) {
                 fallback = ReflectionHit{refined.xy, confidence * (1.0 - smoothstep(1.0, 8.0, refined.z)), high};
             }
