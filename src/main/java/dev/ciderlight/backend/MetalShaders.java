@@ -112,6 +112,8 @@ public final class MetalShaders {
     private static final int OPAQUE_DEPTH_INDEX = 12;
     private static final int SHADOW_COLOR_INDEX = 11;
     private static final int SHADOW_HISTORY_INDEX = 10;
+    /** Translucent terrain's shadow history (terrain.metal, MC_REFLECT only). */
+    private static final int TRANSLUCENT_SHADOW_HISTORY_INDEX = 15;
     /** Vertex-stage buffer holding the waving-foliage map (see foliage.metal). */
     private static final int FOLIAGE_INDEX = 13;
     private static final int AO_INDEX = 9;
@@ -339,7 +341,10 @@ public final class MetalShaders {
     private long compositeState;
     private long upscaleState;
     private long shadowHistoryState;
+    /** Shadow history of what lies behind translucent terrain (the opaque depth): the ground under water and glass. */
     private final long[] shadowHistoryTextures = new long[2];
+    /** Shadow history of the nearest surface (the full depth): water, glass and ice, and composite's deferred shadows. */
+    private final long[] translucentShadowHistoryTextures = new long[2];
     private int shadowHistoryWidth;
     private int shadowHistoryHeight;
     private int shadowHistoryIndex;
@@ -1062,6 +1067,8 @@ public final class MetalShaders {
         MetalNative.passSetTexture(enc, FRAME_INDEX, this.shadowTexture(), this.shadowSampler, MetalConst.STAGE_FRAGMENT);
         MetalNative.passSetTexture(enc, SHADOW_COLOR_INDEX, this.shadowColorTexture(), 0L, MetalConst.STAGE_FRAGMENT);
         MetalNative.passSetTexture(enc, SHADOW_HISTORY_INDEX, this.shadowHistoryTextures[1 - this.shadowHistoryIndex], 0L, MetalConst.STAGE_FRAGMENT);
+        MetalNative.passSetTexture(enc, TRANSLUCENT_SHADOW_HISTORY_INDEX, this.translucentShadowHistoryTextures[1 - this.shadowHistoryIndex], 0L,
+            MetalConst.STAGE_FRAGMENT);
         if (this.ao) {
             MetalNative.passSetTexture(enc, AO_INDEX, this.aoTextures[1 - this.aoIndex], 0L, MetalConst.STAGE_FRAGMENT);
         }
@@ -1682,13 +1689,21 @@ public final class MetalShaders {
         }
         for (int i = 0; i < 2; i++) {
             long old = this.shadowHistoryTextures[i];
+            long oldTranslucent = this.translucentShadowHistoryTextures[i];
             if (old != 0L) {
-                this.device.encoder().queueForDestroy(() -> MetalNative.release(old));
+                this.device.encoder().queueForDestroy(() -> {
+                    MetalNative.release(old);
+                    MetalNative.release(oldTranslucent);
+                });
             }
             this.shadowHistoryTextures[i] = MetalNative.textureCreate(
                 this.device.context(), SHADOW_HISTORY_FORMAT, width, height, 1, 1, 4 | 8
             );
+            this.translucentShadowHistoryTextures[i] = MetalNative.textureCreate(
+                this.device.context(), SHADOW_HISTORY_FORMAT, width, height, 1, 1, 4 | 8
+            );
             MetalNative.setLabel(this.shadowHistoryTextures[i], "Ciderlight surface shadows " + i);
+            MetalNative.setLabel(this.translucentShadowHistoryTextures[i], "Ciderlight translucent surface shadows " + i);
         }
         this.shadowHistoryWidth = width;
         this.shadowHistoryHeight = height;
@@ -1700,18 +1715,27 @@ public final class MetalShaders {
             this.shadowHistoryState = this.fullscreenState("shadow_history_fragment", SHADOW_HISTORY_FORMAT, SHADOW_HISTORY_STATE);
         }
         MetalNative.profileLabel("shadow history");
-        long enc = MetalNative.passBeginOverwrite(frame, new long[]{this.shadowHistoryTextures[this.shadowHistoryIndex]},
+        // Two layers wherever translucent terrain was drawn: the ground behind it (the depth from before translucent
+        // terrain, like ambientOcclusion) and the translucent surface itself (the full depth). With only one, the other
+        // layer's pixels never matched their history and showed the raw jittered shadow every frame.
+        long behind = this.opaqueSnapshotThisFrame ? this.opaqueDepth : this.mainDepth;
+        this.renderShadowHistoryLayer(frame, this.shadowHistoryTextures, behind);
+        this.renderShadowHistoryLayer(frame, this.translucentShadowHistoryTextures, this.mainDepth);
+        this.shadowHistoryValid = this.shadowValid;
+    }
+
+    private void renderShadowHistoryLayer(final long frame, final long[] textures, final long depth) {
+        long enc = MetalNative.passBeginOverwrite(frame, new long[]{textures[this.shadowHistoryIndex]},
             this.shadowHistoryWidth, this.shadowHistoryHeight);
         MetalNative.passSetPipeline(enc, this.shadowHistoryState, 0L, false, false, 0.0F, 0.0F);
         MetalNative.passSetBytes(enc, 0, this.sampleFrame, FRAME_BYTES, BOTH);
-        MetalNative.passSetTexture(enc, 0, this.mainDepth, 0L, MetalConst.STAGE_FRAGMENT);
+        MetalNative.passSetTexture(enc, 0, depth, 0L, MetalConst.STAGE_FRAGMENT);
         MetalNative.passSetTexture(enc, 1, this.shadowTexture(), this.shadowSampler, MetalConst.STAGE_FRAGMENT);
-        MetalNative.passSetTexture(enc, 2, this.shadowHistoryTextures[1 - this.shadowHistoryIndex], 0L, MetalConst.STAGE_FRAGMENT);
+        MetalNative.passSetTexture(enc, 2, textures[1 - this.shadowHistoryIndex], 0L, MetalConst.STAGE_FRAGMENT);
         MetalNative.passSetTexture(enc, 3, this.shadowColorTexture(), 0L, MetalConst.STAGE_FRAGMENT);
         MetalNative.passSetTexture(enc, 7, this.cloudMapTexture(), 0L, MetalConst.STAGE_FRAGMENT);
         MetalNative.passDraw(enc, MetalConst.PRIM_TRIANGLES, 0, 3, 1, 0);
         MetalNative.passEnd(enc);
-        this.shadowHistoryValid = this.shadowValid;
     }
 
     /**
@@ -1876,7 +1900,7 @@ public final class MetalShaders {
         MetalNative.passSetTexture(enc, 1, this.shadowTexture(), this.shadowSampler, MetalConst.STAGE_FRAGMENT);
         MetalNative.passSetTexture(enc, 2, this.volumetricTextures[this.volumetricIndex], 0L, MetalConst.STAGE_FRAGMENT);
         MetalNative.passSetTexture(enc, 3, this.shadowColorTexture(), 0L, MetalConst.STAGE_FRAGMENT);
-        MetalNative.passSetTexture(enc, 4, this.shadowHistoryTextures[1 - this.shadowHistoryIndex], 0L, MetalConst.STAGE_FRAGMENT);
+        MetalNative.passSetTexture(enc, 4, this.translucentShadowHistoryTextures[1 - this.shadowHistoryIndex], 0L, MetalConst.STAGE_FRAGMENT);
         MetalNative.passSetTexture(enc, 5, this.extinctionTextures[this.volumetricIndex], 0L, MetalConst.STAGE_FRAGMENT);
         if (this.ao) {
             MetalNative.passSetTexture(enc, 6, this.aoTextures[this.aoIndex], 0L, MetalConst.STAGE_FRAGMENT);
@@ -2717,6 +2741,7 @@ public final class MetalShaders {
         List<Long> handles = new ArrayList<>(List.of(this.farShadowColorTextures[0], this.farShadowTextures[0], this.farShadowColorTextures[1],
             this.farShadowTextures[1], this.extinctionTextures[0], this.extinctionTextures[1], this.shadowTexture, this.shadowSampler, this.opaqueColor, this.opaqueDepth,
             this.volumetricTextures[0], this.volumetricTextures[1], this.shadowColorTexture, this.shadowHistoryTextures[0], this.shadowHistoryTextures[1],
+            this.translucentShadowHistoryTextures[0], this.translucentShadowHistoryTextures[1],
             this.foliageBuffer, this.cloudMapTexture, this.frameConstantsTexture, this.lightningShadowTexture, this.handSpriteBuffer, this.airNoiseTexture,
             this.aoRawTexture, this.aoTextures[0], this.aoTextures[1]));
         for (long handle : handles) {

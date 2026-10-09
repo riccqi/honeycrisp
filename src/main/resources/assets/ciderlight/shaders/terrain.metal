@@ -11,6 +11,7 @@ using namespace metal;
 #define IDX_OPAQUE_DEPTH 12
 #define IDX_SHADOW_COLOR 11
 #define IDX_SHADOW_HISTORY 10
+#define IDX_TRANSLUCENT_SHADOW_HISTORY 15
 #define IDX_AO 9
 #define IDX_CLOUD_SHADOW 8
 #define IDX_FRAME_CONSTANTS 7
@@ -213,6 +214,8 @@ fragment float4 terrain_fragment(VertexOut in [[stage_in]],
                                  // Translucent terrain blends in the shader (Apple GPU framebuffer fetch), so
                                  // water can replace what is behind it with a refracted, absorbed view.
                                  , float4 behind [[color(0)]]
+                                 // The shadow history of the translucent surface itself; shadowHistory holds the ground behind it.
+                                 , texture2d<float> translucentShadowHistory [[texture(IDX_TRANSLUCENT_SHADOW_HISTORY)]]
 #endif
                                  ) {
     // Derivatives must be taken in uniform control flow, before any discard or branch.
@@ -287,7 +290,11 @@ fragment float4 terrain_fragment(VertexOut in [[stage_in]],
 #endif
         float3 vis = ndotl > 0.0 ? shadow_visibility(frame, shadowMap, shadowSampler, shadowColor, cloudShadow, in.worldPos, n, ndotl) : float3(0.0);
         if (ndotl > 0.0 && frame.params.w > 0.5) {
+#ifdef MC_REFLECT
+            vis = shadow_temporal(frame, translucentShadowHistory, in.worldPos, vis, distanceGradient * 2.0); // half-resolution history
+#else
             vis = shadow_temporal(frame, shadowHistory, in.worldPos, vis, distanceGradient * 2.0); // half-resolution history
+#endif
         }
         direct = facing * vis;
         sunVis = vis;
