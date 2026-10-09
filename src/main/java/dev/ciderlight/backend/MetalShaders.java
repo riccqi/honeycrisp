@@ -2521,12 +2521,13 @@ public final class MetalShaders {
             .setOrtho(-SHADOW_RADIUS, SHADOW_RADIUS, -SHADOW_RADIUS, SHADOW_RADIUS, 0.0F, SHADOW_RADIUS * 4.0F, true)
             .lookAt(light.x * SHADOW_RADIUS * 2.0F, light.y * SHADOW_RADIUS * 2.0F, light.z * SHADOW_RADIUS * 2.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F);
 
-        // Jitter raster coverage by less than half a texel. Reprojected visibility history integrates the
-        // sub-texel samples, so a slowly moving edge need not wait for a whole shadow texel to change.
+        // Jitter raster coverage by up to an eighth of a texel. Reprojected visibility history integrates the
+        // sub-texel samples, so a slowly moving edge need not wait for a whole shadow texel to change. A wider
+        // jitter (up to 3/8) left every shadow edge shimmering: the history cannot average out more than it holds.
         if (SHADOW_HISTORY) {
             float[] offset = SHADOW_JITTER[this.frameIndex & 7];
-            shadow.m30(shadow.m30() + offset[0] * 2.0F / this.shadowSize);
-            shadow.m31(shadow.m31() + offset[1] * 2.0F / this.shadowSize);
+            shadow.m30(shadow.m30() + offset[0] * (2.0F / 3.0F) / this.shadowSize);
+            shadow.m31(shadow.m31() + offset[1] * (2.0F / 3.0F) / this.shadowSize);
         }
         if (atmosphere != this.previousAtmosphere || underwater != this.previousUnderwater || (underwater && Math.abs(waterSurface - this.previousWaterSurface) > 0.25)
             || level != this.previousLevel || cameraPos.distanceToSqr(this.prevCameraPos) > 64.0
@@ -2672,7 +2673,8 @@ public final class MetalShaders {
         this.sampleFrame.set(ValueLayout.JAVA_FLOAT, AIR_NEAR_OFFSET, FOG_NEAR);
         this.sampleFrame.set(ValueLayout.JAVA_FLOAT, AIR_NEAR_OFFSET + 4, FOG_NEAR_RANGE);
         this.sampleFrame.set(ValueLayout.JAVA_FLOAT, AIR_NEAR_OFFSET + 8, golden);
-        this.sampleFrame.set(ValueLayout.JAVA_FLOAT, 460, (float)Math.exp(-Math.max(dt, 0.001F) / 0.06F));
+        // Shadow history weight: a 0.2 s memory spans two jitter cycles (8 frames) at 120 fps; 0.06 s left a visible ripple.
+        this.sampleFrame.set(ValueLayout.JAVA_FLOAT, 460, (float)Math.exp(-Math.max(dt, 0.001F) / 0.2F));
         this.sampleFrame.set(ValueLayout.JAVA_FLOAT, 464, (float)(cameraPos.x - this.prevCameraPos.x));
         this.sampleFrame.set(ValueLayout.JAVA_FLOAT, 468, (float)(cameraPos.y - this.prevCameraPos.y));
         this.sampleFrame.set(ValueLayout.JAVA_FLOAT, 472, (float)(cameraPos.z - this.prevCameraPos.z));
