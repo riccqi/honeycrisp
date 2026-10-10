@@ -4,7 +4,9 @@ struct ReflectionHit {
     float2 uv;
     float confidence;
     float distance;
-    float hidden; // 1 when the ray left the screen or its range behind something in front of it: what it reflects is unknown
+    // Above 0 when the ray left the screen or its range behind something in front of it: what it reflects is unknown.
+    // 1 for the dark water guess; with `distance` set, how strongly to show the first thing it passed behind (at `uv`).
+    float hidden;
 };
 
 static float3 reflection_eye(float4x4 vp) {
@@ -102,6 +104,8 @@ static float reflection_clearance(depth2d<float> depth, float2 coefficients, flo
 }
 
 // Whether a ray that ended at `previous` (at clip `clip`) is hidden behind something, so that what it reflects is unknown.
+// A ray that already passed close behind something keeps that as its guess instead (fallback): darkening it as well left
+// single dark pixels among its neighbours' hits on a far cliff.
 // Something nearer the camera than the water does not count: a ray heading away from the camera passes behind it only
 // on screen, and guessing dark water there would paint the shape of a nearby tree's canopy into distant water.
 static float reflection_hidden(float4 previous, float4 clip, float4 clipOrigin, float4 clipStep) {
@@ -131,11 +135,17 @@ static ReflectionHit trace_reflection(depth2d<float> depth, float4x4 vp, float3 
     int refinements = 0;
     // What to show if the ray never finds a clean hit: nothing at first, then the first thing it passed behind.
     ReflectionHit fallback = miss;
+    // The first thing the ray passed behind, however far: a ray lost after all takes its colour (terrain.metal), as
+    // strongly as a hit there would show (its `hidden`), so it matches the neighbouring rays that do hit it.
+    float2 lostUV = float2(0.0);
+    float lostT = 0.0;
+    float lostWeight = 0.0;
     for (int i = 0; i < REFLECTION_STEPS; i++) {
         float t = min(previousT + stride, 128.0);
         float4 sample = reflection_probe(depth, coefficients, clipOrigin + clipStep * t, shift);
         if (sample.w == 0.0) {
-            fallback.hidden = reflection_hidden(previous, clipOrigin + clipStep * previousT, clipOrigin, clipStep);
+            fallback.hidden = fallback.confidence > 0.0 ? 0.0 : reflection_hidden(previous, clipOrigin + clipStep * previousT, clipOrigin, clipStep);
+            if (fallback.hidden > 0.0 && lostT > 0.0) { fallback.uv = lostUV; fallback.distance = lostT; fallback.hidden *= lostWeight; }
             return fallback;
         }
         if (sample.z >= 0.0 && previous.z < 0.0) {
@@ -161,6 +171,20 @@ static ReflectionHit trace_reflection(depth2d<float> depth, float4x4 vp, float3 
             const float2 margin = float2(0.015, 0.2);
             float2 edge = smoothstep(float2(0.0), margin, refined.xy) * smoothstep(float2(0.0), margin, 1.0 - refined.xy);
             float confidence = edge.x * edge.y * (1.0 - smoothstep(96.0, 128.0, high));
+            // A surface seen at a glancing angle (the steps of a cliff, looked down on) changes depth by up to a
+            // block or more from one pixel to the next, so a ray that really meets it can cross between two pixels
+            // and miss the thin test above: neighbouring rays then alternate between hit and miss, in stripes. Allow
+            // the depth step of the pixels around the crossing, up to two blocks plus 4% of the distance (a pixel
+            // covers more of a far cliff): further apart they are separate objects (a silhouette in front of distant
+            // terrain), which the ray passes behind.
+            float2 pixel = 1.0 / float2(depth.get_width(), depth.get_height());
+            float slope = 0.0;
+            for (int j = 0; j < 4; j++) {
+                float2 side = j == 0 ? float2(pixel.x, 0.0) : j == 1 ? float2(-pixel.x, 0.0) : j == 2 ? float2(0.0, pixel.y) : float2(0.0, -pixel.y);
+                float4 near = reflection_probe(depth, coefficients, hitClip, side + (refined.xy - (hitClip.xy / hitClip.w * 0.5 + 0.5)));
+                if (near.w > 0.0 && near.z > -1e5) slope = max(slope, abs(near.z - refined.z));
+            }
+            thickness = max(thickness, min(slope, 2.0 + 0.04 * hitClip.w));
             if (refined.z <= thickness) {
                 if (clipStep.w > 0.0) confidence *= reflection_clearance(depth, coefficients, refined.xy, clipOrigin.w);
                 return ReflectionHit{refined.xy, confidence, high};
@@ -179,6 +203,11 @@ static ReflectionHit trace_reflection(depth2d<float> depth, float4x4 vp, float3 
             // between the camera and the water never shows in it.
             if (fallback.confidence == 0.0 && !foreground) {
                 fallback = ReflectionHit{refined.xy, confidence * (1.0 - smoothstep(1.0, 8.0, refined.z)), high};
+                if (lostT == 0.0) {
+                    lostUV = refined.xy;
+                    lostT = high;
+                    lostWeight = confidence * (clipStep.w > 0.0 ? reflection_clearance(depth, coefficients, refined.xy, clipOrigin.w) : 1.0);
+                }
             }
             if (++refinements >= REFLECTION_CROSSINGS) return fallback;
             // More than a block behind what is visible there: the ray is passing behind an object nearer the camera,
@@ -197,6 +226,7 @@ static ReflectionHit trace_reflection(depth2d<float> depth, float4x4 vp, float3 
         previousT = t;
         stride *= REFLECTION_STEP_GROWTH;
     }
-    fallback.hidden = reflection_hidden(previous, clipOrigin + clipStep * previousT, clipOrigin, clipStep);
+    fallback.hidden = fallback.confidence > 0.0 ? 0.0 : reflection_hidden(previous, clipOrigin + clipStep * previousT, clipOrigin, clipStep);
+    if (fallback.hidden > 0.0 && lostT > 0.0) { fallback.uv = lostUV; fallback.distance = lostT; fallback.hidden *= lostWeight; }
     return fallback;
 }

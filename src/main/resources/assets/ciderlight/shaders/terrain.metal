@@ -514,8 +514,12 @@ fragment float4 terrain_fragment(VertexOut in [[stage_in]],
                 ReflectionHit hit = trace_reflection(opaqueDepth, vp, in.worldPos + n * 0.03, R);
                 // A ray lost behind something nearer the camera (a tree in front of far water) reflects what that
                 // hides. Bright sky there stands out against the terrain mirrored around it, and a shallow ray most
-                // often ends in terrain, so the guess for those is the dark water colour rather than the sky.
-                reflColor = mix(reflColor, deep, hit.hidden * traced * (1.0 - smoothstep(0.1, 0.5, R.y)));
+                // often ends in terrain, so the guess for those is the dark water colour rather than the sky. Unless
+                // the ray passed behind something on the way (too far behind it to count as its reflection): that
+                // thing's colour is the better guess, being what the neighbouring rays meet. A lone ray that slips
+                // behind a tree's trunk or leaves while its neighbours hit them was otherwise a black speck.
+                float3 lostColor = hit.distance > 0.0 ? opaqueColor.sample(nearestClamp, hit.uv).rgb : deep;
+                reflColor = mix(reflColor, lostColor, hit.hidden * traced * (1.0 - smoothstep(0.1, 0.5, R.y)));
                 if (hit.confidence > 0.0) {
                     // Fetch the same texel whose depth was validated. Linear colour filtering could
                     // pull an unrelated foreground neighbour back into the reflection at silhouettes.
