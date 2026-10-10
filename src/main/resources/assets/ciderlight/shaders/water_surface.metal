@@ -33,7 +33,10 @@ constant int WATER_OCTAVES = 6;
 static WaterWaves water_waves(float2 world, float time, float footprint, float rain) {
     WaterWaves w = {float2(0.0), 0.0};
 #ifdef MC_NO_WATER_WAVES
-    return w; // Water Waves off: a calm surface (water_face_waves still adds rain ripples)
+    // Water Waves off: a calm surface (water_face_waves still adds rain ripples). Calm water is still not a perfect
+    // mirror: a little roughness keeps the sun's glint a soft patch instead of a hard, blinding point.
+    w.variance = 0.0015;
+    return w;
 #endif
     const float2x2 turn = float2x2(float2(-0.737, 0.676), float2(-0.676, -0.737));
     float2x2 basis = float2x2(float2(1.0, 0.0), float2(0.0, 1.0));
